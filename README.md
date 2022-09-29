@@ -1,3 +1,5 @@
+# BoiSmartContract
+Smart contract for start-up funding DAO management
 
 STEAL THIS CODE
 
