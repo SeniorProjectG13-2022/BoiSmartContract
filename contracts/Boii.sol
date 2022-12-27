@@ -1,4 +1,4 @@
-pragma solidity ^0.8.0;
+pragma solidity 0.8.17;
 
 contract Boii {
 
@@ -45,7 +45,7 @@ contract Boii {
         uint256 activePeriod;
         uint256 yesVoted;
         uint256 noVoted;
-        bool[6] flags;
+        bool[5] flags;
         string projectHash;
         uint256 maxTotalSharesAtYesVote;
         mapping(address => Vote) votesByMember;
@@ -63,7 +63,7 @@ contract Boii {
     
     mapping(address => bool) public proposedToKick;
     mapping(address => Member) public members;
-    mapping(address => Proposal) public proposals;
+    mapping(uint256 => Proposal) public proposals;
 
     constructor(
         address _summoner,
@@ -95,9 +95,67 @@ contract Boii {
 
         members[_summoner] = Member(1, true, 0, false);
         totalShares = 1;
-
+        
         // NOTE: The Moloch emit the deploy event.
-        // TODO: Create getter and helper function.
+    }
+
+    //Getter and helper function
+    function max(uint256 x, uint256 y) internal pure returns (uint256) {
+        return x >= y ? x : y;
+    }
+
+    function getCurrentPeriod() public view returns (uint256) {
+        return (block.timestamp - summoningTime) / periodDuration;
+    }
+
+    function getProposalFlags(uint256 proposalId) public view returns (bool[5] memory) {
+        return proposals[proposalId].flags;
+    }
+
+    function getUserTokenBalance(address user, address token) public view returns (uint256) {
+        return userTokenBalances[user][token];
+    }
+
+    // FIXME: Cannot use standard ABI, Is it okay to use experimentl version ABI v.2
+    // function getAllProposals() public view returns () {
+    //     return proposals;
+    // }
+
+    // function getProposalId(uint256 proposalId) public view returns (Proposal memory) {
+    //     return proposals[proposalId];
+    // } 
+
+    function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
+        require(members[memberAddress].exists, "member does not exist");
+        return proposals[proposalId].votesByMember[memberAddress];
+    }
+
+    function unsafeAddToBalance(address user, address token, uint256 amount) internal {
+        userTokenBalances[user][token] += amount;
+        userTokenBalances[TOTAL][token] += amount;
+    }
+
+    function unsafeSubtractFromBalance(address user, address token, uint256 amount) internal {
+        userTokenBalances[user][token] -= amount;
+        userTokenBalances[TOTAL][token] -= amount;
+    }
+
+    function unsafeInternalTransfer(address from, address to, address token, uint256 amount) internal {
+        unsafeSubtractFromBalance(from, token, amount);
+        unsafeAddToBalance(to, token, amount);
+    }
+
+    function fairShare(uint256 balance, uint256 shares, uint256 totalShare) internal pure returns (uint256) {
+        require(totalShare != 0);
+
+        if (balance == 0) { return 0; }
+
+        uint256 prod = balance * shares;
+
+        if (prod / balance == shares) {
+            return prod / totalShare;
+        }
+        return (balance / totalShare) * shares;
     }
 
 }
