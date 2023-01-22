@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.17;
 
 contract Boii {
@@ -95,7 +96,7 @@ contract Boii {
 
         members[_summoner] = Member(1, true, 0, false);
         totalShares = 1;
-        
+
         // NOTE: The Moloch emit the deploy event.
     }
 
@@ -121,9 +122,87 @@ contract Boii {
     //     return proposals;
     // }
 
-    // function getProposalId(uint256 proposalId) public view returns (Proposal memory) {
-    //     return proposals[proposalId];
-    // } 
+    // FIXME: add check mechanism to see if the member has already voted. There are 2 ways
+    // 1) add member address as optional parameter 
+    // 2) create separate function
+    // function getProposalById(uint256 proposalId) public view returns (
+    //     address, //applicant
+    //     address, //proposer
+    //     address, //sponsor
+    //     uint256, //sharesRequested
+    //     uint256, //tributeOffered
+    //     uint256, //paymentRequested
+    //     uint256, //startPeriod
+    //     uint256, //activePeriod
+    //     uint256, //yesVoted 
+    //     uint256, //noVoted
+    //     bool[5] memory, //flags 
+    //     string memory, //projectHash
+    //     uint256 //maxTotalSharesAtYesVote
+    // ) {        
+    //     return (
+    //         proposals[proposalId].applicant,
+    //         proposals[proposalId].proposer,
+    //         proposals[proposalId].sponsor,
+    //         proposals[proposalId].sharesRequested,
+    //         proposals[proposalId].tributeOffered,
+    //         proposals[proposalId].paymentRequested,
+    //         proposals[proposalId].startPeriod,
+    //         proposals[proposalId].activePeriod,
+    //         proposals[proposalId].yesVoted,
+    //         proposals[proposalId].noVoted,
+    //         proposals[proposalId].flags, 
+    //         proposals[proposalId].projectHash,
+    //         proposals[proposalId].maxTotalSharesAtYesVote
+    //     );
+    // }
+
+    function submitProposal(
+        address applicant,
+        uint256 sharesRequested,
+        uint256 tributeOffered,
+        uint256 paymentRequested,
+        string memory projectHash
+    ) public returns (uint256 proposalId) {
+        require(sharesRequested + sharesRequested <= MAX_NUMBER_OF_SHARES, "too many shares requested");
+        require(applicant != address(0), "applicant cannot be 0");
+        require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
+        require(members[applicant].jailed == false, "proposal applicant must not be jailed");
+
+        // collect tribute from proposer and store it in the Moloch until the proposal is processed
+        // require(IERC20(tributeToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
+        // unsafeAddToBalance(ESCROW, tributeToken, tributeOffered);
+
+        bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
+
+        _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, projectHash, flags);
+        return proposalCount - 1;
+    }
+
+    function _submitProposal(
+        address applicant,
+        uint256 sharesRequested, 
+        uint256 tributeOffered, 
+        uint256 paymentRequested, 
+        string memory projectHash, 
+        bool[5] memory flags
+    ) internal {
+        Proposal storage proposal = proposals[proposalCount];
+        proposal.applicant = applicant;
+        proposal.proposer = msg.sender;
+        proposal.sharesRequested = sharesRequested;
+        proposal.tributeOffered = tributeOffered;
+        proposal.paymentRequested = paymentRequested;
+        proposal.startPeriod = 0;
+        proposal.activePeriod = 0;
+        proposal.yesVoted = 0;
+        proposal.noVoted = 0;
+        proposal.flags = flags;
+        proposal.projectHash = projectHash;
+        proposal.maxTotalSharesAtYesVote = 0;
+
+        proposalCount += 1;
+    } 
 
     function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
         require(members[memberAddress].exists, "member does not exist");
