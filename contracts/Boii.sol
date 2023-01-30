@@ -307,6 +307,81 @@ contract Boii {
         proposal.flags[0] = true; // sponsored
     }
 
+    function submitVote(uint256 proposalIndex, uint8 uintVote) public {
+        Member storage member = members[msg.sender];
+
+        require(proposalIndex < proposalCount, "proposal does not exist");
+        Proposal storage proposal = proposals[proposalIndex];
+
+        require(proposal.flags[0] == true, "proposal does not sponsor");
+        require(uintVote < 3, "must be less than 3");
+        Vote vote = Vote(uintVote);
+
+        require(getCurrentPeriod() >= proposal.activePeriod, "voting period has not started");
+        require(!hasVotingPeriodExpired(proposal.activePeriod), "proposal voting period has expired");
+        require(proposal.votesByMember[msg.sender] == Vote.Null, "member has already voted");
+        require(vote == Vote.Yes || vote == Vote.No, "vote must be either Yes or No");
+
+        proposal.votesByMember[msg.sender] = vote;
+
+        if (vote == Vote.Yes) {
+            proposal.yesVoted = proposal.yesVoted + member.shares;
+
+            // set maximum of total shares encountered at a yes vote - used to bound dilution for yes voters
+            if (totalShares > proposal.maxTotalSharesAtYesVote) {
+                proposal.maxTotalSharesAtYesVote = totalShares;
+            }
+        } else if (vote == Vote.No) {
+            proposal.noVoted = proposal.noVoted + member.shares;
+        }
+    }
+
+    function hasVotingPeriodExpired(uint256 startingPeriod) public view returns (bool) {
+        return getCurrentPeriod() >= startingPeriod + votingPeriodLength;
+    }
+
+    function ragequit(uint256 sharesToBurn, uint256 proposalId) public {
+        _ragequit(msg.sender, sharesToBurn, proposalId);
+    }
+
+    function _ragequit(address memberAddress, uint256 sharesToBurn, uint256 proposalId) internal {
+        uint256 initialTotalShares = totalShares;
+
+        Member storage member = members[memberAddress];
+
+        require(member.shares >= sharesToBurn, "insufficient shares");
+
+        // TODO: implement canRagequit function
+        // require(canRagequit(memberAddress, proposalId), "cannot ragequit until highest index proposal member voted YES on is processed");
+
+        // burn shares
+        member.shares = member.shares - sharesToBurn;
+        totalShares = totalShares - sharesToBurn;
+
+        uint256 amountToRagequit = fairShare(userTokenBalances[GUILD][depositToken], sharesToBurn, initialTotalShares);
+        if (amountToRagequit > 0) { // gas optimization to allow a higher maximum token limit
+            // deliberately not using safemath here to keep overflows from preventing the function execution (which would break ragekicks)
+            // if a token overflows, it is because the supply was artificially inflated to oblivion, so we probably don't care about it anyways
+            userTokenBalances[GUILD][depositToken] -= amountToRagequit;
+            userTokenBalances[memberAddress][depositToken] += amountToRagequit;
+        }
+    }
+
+    // function canRagequit(address memberAddress, uint256 proposalId) internal view returns (bool) {
+    //     return proposals[proposalId].votesByMember[memberAddress] != Vote(1);
+    // }
+
+    function cancelProposal(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        require(!proposal.flags[0], "proposal has already been sponsored");
+        require(!proposal.flags[3], "proposal has already been cancelled");
+        require(msg.sender == proposal.proposer, "solely the proposer can cancel");
+
+        proposal.flags[3] = true; // cancelled
+
+        // unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeToken, proposal.tributeOffered);
+    }
+
     function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
         require(members[memberAddress].exists, "member does not exist");
         return proposals[proposalId].votesByMember[memberAddress];
