@@ -46,7 +46,7 @@ contract Boii {
         uint256 activePeriod;
         uint256 yesVoted;
         uint256 noVoted;
-        bool[5] flags;
+        bool[6] flags;
         string projectHash;
         uint256 maxTotalSharesAtYesVote;
         mapping(address => Vote) votesByMember;
@@ -113,7 +113,7 @@ contract Boii {
         return proposals[proposalId].paymentRequested;
     }
 
-    function getProposalFlags(uint256 proposalId) public view returns (bool[5] memory) {
+    function getProposalFlags(uint256 proposalId) public view returns (bool[6] memory) {
         return proposals[proposalId].flags;
     }
 
@@ -187,7 +187,7 @@ contract Boii {
     //     // require(IERC20(tributeToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
     //     // unsafeAddToBalance(ESCROW, tributeToken, tributeOffered);
 
-    //     bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
+    //     bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
 
     //     _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, projectHash, flags);
     //     return proposalCount - 1;
@@ -204,7 +204,7 @@ contract Boii {
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
 
-        bool[5] memory flags = [false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
+        bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
 
         uint256[] memory paymentRequested = new uint256[](1); //join-request proposal is not required payment requested
         paymentRequested[0] = 0;
@@ -224,7 +224,7 @@ contract Boii {
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
 
-        bool[5] memory flags = [false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
+        bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
         _submitProposal(applicant, 0, tributeOffered, paymentRequested, details, flags); // shares request is not required in project funding proposal
 
         return proposalCount - 1;
@@ -239,7 +239,7 @@ contract Boii {
         require(member.shares > 0 , "member must have at least one share");
         require(members[memberToKick].jailed == false, "member must not already be jailed");
 
-        bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
+        bool[6] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
         flags[4] = true; // guild kick
 
         uint256[] memory _temp = new uint256[](1); // guildkick without paymentRequested
@@ -255,7 +255,7 @@ contract Boii {
         uint256 tributeOffered, 
         uint256[] memory paymentRequested, 
         string memory projectHash, 
-        bool[5] memory flags
+        bool[6] memory flags
     ) internal {
         Proposal storage proposal = proposals[proposalCount];
         proposal.applicant = applicant;
@@ -340,6 +340,11 @@ contract Boii {
         return getCurrentPeriod() >= startingPeriod + votingPeriodLength;
     }
 
+    function a_testme() public {
+        userTokenBalances[GUILD][depositToken] = 20;
+        proposals[0].flags[5] = true;
+    }
+
     function ragequit(uint256 sharesToBurn, uint256 proposalId) public {
         _ragequit(msg.sender, sharesToBurn, proposalId);
     }
@@ -353,7 +358,11 @@ contract Boii {
 
         // TODO: implement canRagequit function
         // require(canRagequit(memberAddress, proposalId), "cannot ragequit until highest index proposal member voted YES on is processed");
-
+        require(proposals[proposalId].flags[5], "proposal must be preprocessed");
+        require(getCurrentPeriod() < (proposals[proposalId].activePeriod + votingPeriodLength + gracePeriodLength), "proposal must be in grace period");
+        require(proposals[proposalId].votesByMember[memberAddress] != Vote(0), "member didn't vote on a proposal");
+        require(proposals[proposalId].votesByMember[memberAddress] != Vote(proposals[proposalId].flags[2] ? 1 : 2), "member who voted the same result cannot ragequit");
+        
         // burn shares
         member.shares = member.shares - sharesToBurn;
         totalShares = totalShares - sharesToBurn;
