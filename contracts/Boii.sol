@@ -41,8 +41,8 @@ contract Boii {
         address sponsor;
         uint256 sharesRequested;
         uint256 tributeOffered;
-        uint256 paymentRequested;
-        uint256 startPeriod;
+        uint256[] paymentRequested;
+        uint256[] startPeriod;
         uint256 activePeriod;
         uint256 yesVoted;
         uint256 noVoted;
@@ -109,6 +109,10 @@ contract Boii {
         return (block.timestamp - summoningTime) / periodDuration;
     }
 
+    function getPaymentRequested(uint256 proposalId) public view returns (uint256[] memory) {
+        return proposals[proposalId].paymentRequested;
+    }
+
     function getProposalFlags(uint256 proposalId) public view returns (bool[5] memory) {
         return proposals[proposalId].flags;
     }
@@ -119,7 +123,16 @@ contract Boii {
 
     // FIXME: Cannot use standard ABI, Is it okay to use experimentl version ABI v.2
     // function getAllProposals() public view returns () {
+    //     string[] memory hash;
+    //     uint256[] memory totalFundRequest;
+
+    //     // for(uint256 i; i < proposalCount; i++) {
+
+    //     // }
     //     return proposals;
+    // }
+    // function getSingleProposal(uint256 i) public view returns (Proposal memory) {
+    //     return proposals[i];
     // }
 
     // FIXME: add check mechanism to see if the member has already voted. There are 2 ways
@@ -157,25 +170,82 @@ contract Boii {
     //     );
     // }
 
-    function submitProposal(
+    // SUBMIT PROPOSALS
+    // function submitProposal(
+    //     address applicant,
+    //     uint256 sharesRequested,
+    //     uint256 tributeOffered,
+    //     uint256[] memory paymentRequested,
+    //     string memory projectHash
+    // ) public returns (uint256 proposalId) {
+    //     require(sharesRequested + sharesRequested <= MAX_NUMBER_OF_SHARES, "too many shares requested");
+    //     require(applicant != address(0), "applicant cannot be 0");
+    //     require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
+    //     require(members[applicant].jailed == false, "proposal applicant must not be jailed");
+
+    //     // collect tribute from proposer and store it in the Moloch until the proposal is processed
+    //     // require(IERC20(tributeToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
+    //     // unsafeAddToBalance(ESCROW, tributeToken, tributeOffered);
+
+    //     bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
+
+    //     _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, projectHash, flags);
+    //     return proposalCount - 1;
+    // }
+
+    function submitJoinProposal(
         address applicant,
         uint256 sharesRequested,
         uint256 tributeOffered,
-        uint256 paymentRequested,
-        string memory projectHash
-    ) public returns (uint256 proposalId) {
+        string memory details
+    ) public returns(uint256 proposalId) {
         require(sharesRequested + sharesRequested <= MAX_NUMBER_OF_SHARES, "too many shares requested");
         require(applicant != address(0), "applicant cannot be 0");
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
 
-        // collect tribute from proposer and store it in the Moloch until the proposal is processed
-        // require(IERC20(tributeToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
-        // unsafeAddToBalance(ESCROW, tributeToken, tributeOffered);
+        bool[5] memory flags = [false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
+
+        uint256[] memory paymentRequested = new uint256[](1); //join-request proposal is not required payment requested
+        paymentRequested[0] = 0;
+
+        _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, details, flags);
+
+        return proposalCount - 1;
+    }
+
+    function submitProjectProposal(
+        address applicant,
+        uint256 tributeOffered,
+        uint256[] memory paymentRequested,
+        string memory details
+    ) public returns (uint256 proposalId) {
+        require(applicant != address(0), "applicant cannot be 0");
+        require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
+        require(members[applicant].jailed == false, "proposal applicant must not be jailed");
+
+        bool[5] memory flags = [false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
+        _submitProposal(applicant, 0, tributeOffered, paymentRequested, details, flags); // shares request is not required in project funding proposal
+
+        return proposalCount - 1;
+    }
+
+    function submitGuildKickProposal(
+        address memberToKick,
+        string memory details
+    ) public returns (uint256 proposalId) {
+        Member memory member = members[memberToKick];
+
+        require(member.shares > 0 , "member must have at least one share");
+        require(members[memberToKick].jailed == false, "member must not already be jailed");
 
         bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
+        flags[4] = true; // guild kick
 
-        _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, projectHash, flags);
+        uint256[] memory _temp = new uint256[](1); // guildkick without paymentRequested
+        _temp[0] = 0;
+
+        _submitProposal(memberToKick, 0, 0, _temp, details, flags);
         return proposalCount - 1;
     }
 
@@ -183,7 +253,7 @@ contract Boii {
         address applicant,
         uint256 sharesRequested, 
         uint256 tributeOffered, 
-        uint256 paymentRequested, 
+        uint256[] memory paymentRequested, 
         string memory projectHash, 
         bool[5] memory flags
     ) internal {
@@ -193,7 +263,7 @@ contract Boii {
         proposal.sharesRequested = sharesRequested;
         proposal.tributeOffered = tributeOffered;
         proposal.paymentRequested = paymentRequested;
-        proposal.startPeriod = 0;
+        proposal.startPeriod = [0];
         proposal.activePeriod = 0;
         proposal.yesVoted = 0;
         proposal.noVoted = 0;
@@ -203,6 +273,39 @@ contract Boii {
 
         proposalCount += 1;
     } 
+
+    function sponsorProposal(
+        uint256 proposalId
+    ) public {
+        // collect proposal deposit from sponsor and store it in the Moloch until the proposal is processed
+        // require(IERC20(depositToken).transferFrom(msg.sender, address(this), proposalDeposit), "proposal deposit token transfer failed");
+        //unsafeAddToBalance(ESCROW, depositToken, proposalDeposit);
+
+        Proposal storage proposal = proposals[proposalId];
+
+        require(proposal.proposer != address(0), "proposal must have been proposed");
+        require(!proposal.flags[0], "proposal has already been sponsored");
+        require(!proposal.flags[3], "proposal has been cancelled");
+        require(members[proposal.applicant].jailed == false, "proposal applicant must not be jailed");
+
+        // guild kick proposal
+        if (proposal.flags[4]) {
+            require(!proposedToKick[proposal.applicant], "already proposed to kick");
+            proposedToKick[proposal.applicant] = true;
+        }
+
+        // compute startingPeriod for proposal
+        uint256 activePeriod = getCurrentPeriod() + 1;
+
+        //set first period
+        proposal.activePeriod = activePeriod;
+
+        //set sponsor
+        proposal.sponsor = msg.sender;
+
+        //st flag
+        proposal.flags[0] = true; // sponsored
+    }
 
     function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
         require(members[memberAddress].exists, "member does not exist");
