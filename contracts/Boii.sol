@@ -44,6 +44,7 @@ contract Boii {
         uint256[] paymentRequested;
         uint256[] startPeriod;
         uint256 activePeriod;
+        uint256 milestoneIndex;
         uint256 yesVoted;
         uint256 noVoted;
         bool[6] flags;
@@ -223,7 +224,7 @@ contract Boii {
         require(applicant != address(0), "applicant cannot be 0");
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
-
+        
         bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
         _submitProposal(applicant, 0, tributeOffered, paymentRequested, details, flags); // shares request is not required in project funding proposal
 
@@ -265,6 +266,7 @@ contract Boii {
         proposal.paymentRequested = paymentRequested;
         proposal.startPeriod = [0];
         proposal.activePeriod = 0;
+        proposal.milestoneIndex = 0;
         proposal.yesVoted = 0;
         proposal.noVoted = 0;
         proposal.flags = flags;
@@ -286,6 +288,7 @@ contract Boii {
         require(proposal.proposer != address(0), "proposal must have been proposed");
         require(!proposal.flags[0], "proposal has already been sponsored");
         require(!proposal.flags[3], "proposal has been cancelled");
+        require(!proposal.flags[1], "proposal has been processed");
         require(members[proposal.applicant].jailed == false, "proposal applicant must not be jailed");
 
         // guild kick proposal
@@ -295,15 +298,22 @@ contract Boii {
         }
 
         // compute startingPeriod for proposal
-        uint256 activePeriod = getCurrentPeriod() + 1;
+        // uint256 activePeriod = getCurrentPeriod() + 1;
+        if (proposal.milestoneIndex == 0) {
+            proposal.startPeriod[0] = getCurrentPeriod() + 1;
+            for (uint i=1; i < proposal.startPeriod.length; i++) {
+                proposal.startPeriod[i] = proposal.startPeriod[i-1] + proposal.startPeriod[i];
+            }
+        }
+        proposal.activePeriod = proposal.startPeriod[0];
 
         //set first period
-        proposal.activePeriod = activePeriod;
+        // proposal.activePeriod = activePeriod;
 
         //set sponsor
         proposal.sponsor = msg.sender;
 
-        //st flag
+        //set flag
         proposal.flags[0] = true; // sponsored
     }
 
@@ -341,28 +351,209 @@ contract Boii {
     }
 
     function a_testme() public {
-        userTokenBalances[GUILD][depositToken] = 20;
-        proposals[0].flags[5] = true;
+        userTokenBalances[ESCROW][depositToken] = 10000;
+        userTokenBalances[TOTAL][depositToken] = 10000;
+        proposals[0].activePeriod = 0;
+    }
+
+    function preProcessProposal(uint256 proposalId) public {
+        _validatePreProposalForProcessing(proposalId);
+        bool didPass = _didPass(proposalId);
+        
+        Proposal storage proposal = proposals[proposalId];
+
+        proposal.flags[5] = true; // set preprocessed to TRUE
+
+        if (proposal.flags[4] != true) {
+            if (proposal.paymentRequested[0] == 0) {
+                if (totalShares + proposal.sharesRequested > MAX_NUMBER_OF_SHARES) {
+                    didPass = false;
+                }
+                proposal.flags[2] = didPass;
+            } else {
+                if (proposal.paymentRequested[proposal.milestoneIndex] > userTokenBalances[GUILD][depositToken]) {
+                    didPass = false;
+                }
+                proposal.flags[2] = didPass;
+            }
+        } else {
+            proposal.flags[2] = didPass;
+        }
+
+    }
+
+    function processProposal(uint256 proposalId) public {
+        _validateProposalForProcessing(proposalId);
+        bool didPass = _didPass(proposalId);
+        
+        Proposal storage proposal = proposals[proposalId];
+
+        if (proposal.flags[4] != true) {
+            if (proposal.paymentRequested[0] == 0) {
+                _processJoinProposal(proposalId, didPass);
+            } else {
+                _processProjectProposal(proposalId, didPass);
+            }
+        } else {
+            _processGuildKickProposal(proposalId, didPass);
+        }
+
+    }
+
+    function _processJoinProposal(uint256 proposalId, bool isPass) internal {
+        Proposal storage proposal = proposals[proposalId];
+        bool didPass = isPass;
+
+        // set processed flag
+        proposal.flags[1] = true;
+
+        // Make the proposal fail if the new total number of shares and loot exceeds the limit
+        if (totalShares + proposal.sharesRequested > MAX_NUMBER_OF_SHARES) {
+            didPass = false;
+        }
+
+        if (didPass) {
+            proposal.flags[2] = true; // didPass
+
+            // if the applicant is already a member, add to their existing shares & loot
+            if (members[proposal.applicant].exists) {
+                members[proposal.applicant].shares = members[proposal.applicant].shares + proposal.sharesRequested;
+
+            // the applicant is a new member, create a new record for them
+            } else {
+                members[proposal.applicant] = Member(proposal.sharesRequested, true, 0, false);
+            }
+            // mint new shares
+            totalShares = totalShares + proposal.sharesRequested;
+
+            unsafeInternalTransfer(ESCROW, GUILD, depositToken, proposal.tributeOffered);
+
+        } else {
+            unsafeInternalTransfer(ESCROW, proposal.proposer, depositToken, proposal.tributeOffered);
+        }
+        // Transfer proposalDeposit back to sponsor
+        _returnDeposit(proposal.sponsor);
+    }
+
+    function _processProjectProposal(uint256 proposalId, bool isPass) internal {
+        Proposal storage proposal = proposals[proposalId];
+        bool didPass = isPass;
+
+        // set processed flag
+        proposal.flags[1] = true;
+
+        // Make the proposal fail if it is requesting more tokens as payment than the available guild bank balance
+        if (proposal.paymentRequested[proposal.milestoneIndex] > userTokenBalances[GUILD][depositToken]) {
+            didPass = false;
+        }
+
+        if (didPass) {
+            proposal.flags[2] = true;
+            unsafeInternalTransfer(GUILD, proposal.applicant, depositToken, proposal.paymentRequested[proposal.milestoneIndex]);
+
+            if (proposal.startPeriod.length > proposal.milestoneIndex + 1) {
+                //update active period and milestone index
+                proposal.milestoneIndex += 1;
+                proposal.activePeriod = proposal.startPeriod[proposal.milestoneIndex];
+                //reset processed, preprocessed flag in case of the proposal has passed and the next milestone is existed
+                proposal.flags[1] = false; //processed = false
+                proposal.flags[5] = false; //preprocessed = false
+            }
+        }
+
+        if (proposal.milestoneIndex == 0) {
+            _returnDeposit(proposal.sponsor);
+        }
+    }
+
+    function _processGuildKickProposal(uint256 proposalId, bool isPass) internal {
+        Proposal storage proposal = proposals[proposalId];
+        bool didPass = isPass;
+
+        require(proposal.flags[4], "must be a guild kick proposal");
+
+        // set processed flag
+        proposal.flags[1] = true;
+
+        if (didPass) {
+            proposal.flags[2] = true;
+            Member memory member = members[proposal.applicant];
+            member.jailed = true;
+            
+        }
+
+        proposedToKick[proposal.applicant] = false;
+        _returnDeposit(proposal.sponsor);
+    }
+
+    function _validateProposalForProcessing(uint256 proposalId) internal view {
+        require(proposalId < proposalCount, "proposal does not exist");
+        Proposal storage proposal = proposals[proposalId];
+
+        require(getCurrentPeriod() >= proposal.activePeriod + votingPeriodLength + gracePeriodLength, "proposal is not ready to be processed");
+        require(proposal.flags[1] == false, "proposal has already been processed");
+    }
+
+    function _validatePreProposalForProcessing(uint256 proposalId) internal view {
+        require(proposalId < proposalCount, "proposal does not exist");
+        Proposal storage proposal = proposals[proposalId];
+
+        require(getCurrentPeriod() >= proposal.activePeriod + votingPeriodLength, "proposal is not ready to be preprocessed");
+        require(proposal.flags[1] == false && proposal.flags[5] == false, "proposal has already been preprocessed/processed");
+    }
+
+    function _didPass(uint256 proposalId) internal view returns (bool didPass) {
+        Proposal storage proposal = proposals[proposalId];
+
+        didPass = proposal.yesVoted > proposal.noVoted;
+
+        // Make the proposal fail if the dilutionBound is exceeded
+        if ((totalShares * dilutionBound) < proposal.maxTotalSharesAtYesVote) {
+            didPass = false;
+        }
+
+        // Make the proposal fail if the applicant is jailed
+        // - for standard proposals, we don't want the applicant to get any shares/loot/payment
+        // - for guild kick proposals, we should never be able to propose to kick a jailed member (or have two kick proposals active), so it doesn't matter
+        if (members[proposal.applicant].jailed != false) {
+            didPass = false;
+        }
+
+        return didPass;
+    }
+
+    function _returnDeposit(address sponsor) internal {
+        unsafeInternalTransfer(ESCROW, sponsor, depositToken, proposalDeposit);
     }
 
     function ragequit(uint256 sharesToBurn, uint256 proposalId) public {
-        _ragequit(msg.sender, sharesToBurn, proposalId);
+        _ragequit(msg.sender, sharesToBurn, proposalId, false);
     }
 
-    function _ragequit(address memberAddress, uint256 sharesToBurn, uint256 proposalId) internal {
+    function ragekick(address memberToKick) public {
+        Member storage member = members[memberToKick];
+
+        require(member.jailed != false, "member must be in jail");
+        require(member.shares > 0, "member must have some share"); // note - should be impossible for jailed member to have shares
+
+        _ragequit(memberToKick, member.shares, 0, true);
+    }
+
+    function _ragequit(address memberAddress, uint256 sharesToBurn, uint256 proposalId, bool isKick) internal {
         uint256 initialTotalShares = totalShares;
 
         Member storage member = members[memberAddress];
 
         require(member.shares >= sharesToBurn, "insufficient shares");
 
-        // TODO: implement canRagequit function
-        // require(canRagequit(memberAddress, proposalId), "cannot ragequit until highest index proposal member voted YES on is processed");
-        require(proposals[proposalId].flags[5], "proposal must be preprocessed");
-        require(getCurrentPeriod() < (proposals[proposalId].activePeriod + votingPeriodLength + gracePeriodLength), "proposal must be in grace period");
-        require(proposals[proposalId].votesByMember[memberAddress] != Vote(0), "member didn't vote on a proposal");
-        require(proposals[proposalId].votesByMember[memberAddress] != Vote(proposals[proposalId].flags[2] ? 1 : 2), "member who voted the same result cannot ragequit");
-        
+        if(!isKick) {//ragequit
+            // TODO: implement canRagequit function
+            // require(canRagequit(memberAddress, proposalId), "cannot ragequit until highest index proposal member voted YES on is processed");
+            require(proposals[proposalId].flags[5], "proposal must be preprocessed");
+            require(getCurrentPeriod() < (proposals[proposalId].activePeriod + votingPeriodLength + gracePeriodLength), "proposal must be in grace period");
+            require(proposals[proposalId].votesByMember[memberAddress] != Vote(0), "member didn't vote on a proposal");
+            require(proposals[proposalId].votesByMember[memberAddress] != Vote(proposals[proposalId].flags[2] ? 1 : 2), "member who voted the same result cannot ragequit");
+        }
         // burn shares
         member.shares = member.shares - sharesToBurn;
         totalShares = totalShares - sharesToBurn;
@@ -375,10 +566,6 @@ contract Boii {
             userTokenBalances[memberAddress][depositToken] += amountToRagequit;
         }
     }
-
-    // function canRagequit(address memberAddress, uint256 proposalId) internal view returns (bool) {
-    //     return proposals[proposalId].votesByMember[memberAddress] != Vote(1);
-    // }
 
     function cancelProposal(uint256 proposalId) public {
         Proposal storage proposal = proposals[proposalId];
