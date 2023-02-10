@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.17;
 
-contract Boii {
+import "./IERC20.sol";
+import "./ReentrancyGuard.sol";
+
+contract Boii is ReentrancyGuard{
 
     //Global constants
     //custom constant that can set when deploy
@@ -199,11 +202,15 @@ contract Boii {
         uint256 sharesRequested,
         uint256 tributeOffered,
         string memory details
-    ) public returns(uint256 proposalId) {
+    ) public nonReentrant returns(uint256 proposalId) {
         require(sharesRequested + sharesRequested <= MAX_NUMBER_OF_SHARES, "too many shares requested");
         require(applicant != address(0), "applicant cannot be 0");
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
+
+        // collect tribute from proposer and store it in the Moloch until the proposal is processed
+        require(IERC20(depositToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
+        unsafeAddToBalance(ESCROW, tributeOffered);
 
         bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
 
@@ -220,7 +227,7 @@ contract Boii {
         uint256 tributeOffered,
         uint256[] memory paymentRequested,
         string memory details
-    ) public returns (uint256 proposalId) {
+    ) public nonReentrant returns (uint256 proposalId) {
         require(applicant != address(0), "applicant cannot be 0");
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
@@ -234,7 +241,7 @@ contract Boii {
     function submitGuildKickProposal(
         address memberToKick,
         string memory details
-    ) public returns (uint256 proposalId) {
+    ) public nonReentrant returns (uint256 proposalId) {
         Member memory member = members[memberToKick];
 
         require(member.shares > 0 , "member must have at least one share");
@@ -278,10 +285,10 @@ contract Boii {
 
     function sponsorProposal(
         uint256 proposalId
-    ) public {
+    ) public nonReentrant {
         // collect proposal deposit from sponsor and store it in the Moloch until the proposal is processed
-        // require(IERC20(depositToken).transferFrom(msg.sender, address(this), proposalDeposit), "proposal deposit token transfer failed");
-        //unsafeAddToBalance(ESCROW, depositToken, proposalDeposit);
+        require(IERC20(depositToken).transferFrom(msg.sender, address(this), proposalDeposit), "proposal deposit token transfer failed");
+        unsafeAddToBalance(ESCROW, proposalDeposit);
 
         Proposal storage proposal = proposals[proposalId];
 
@@ -317,7 +324,7 @@ contract Boii {
         proposal.flags[0] = true; // sponsored
     }
 
-    function submitVote(uint256 proposalIndex, uint8 uintVote) public {
+    function submitVote(uint256 proposalIndex, uint8 uintVote) public nonReentrant {
         Member storage member = members[msg.sender];
 
         require(proposalIndex < proposalCount, "proposal does not exist");
@@ -356,7 +363,7 @@ contract Boii {
         proposals[0].activePeriod = 0;
     }
 
-    function preProcessProposal(uint256 proposalId) public {
+    function preProcessProposal(uint256 proposalId) public nonReentrant {
         _validatePreProposalForProcessing(proposalId);
         bool didPass = _didPass(proposalId);
         
@@ -382,7 +389,7 @@ contract Boii {
 
     }
 
-    function processProposal(uint256 proposalId) public {
+    function processProposal(uint256 proposalId) public nonReentrant {
         _validateProposalForProcessing(proposalId);
         bool didPass = _didPass(proposalId);
         
@@ -426,10 +433,10 @@ contract Boii {
             // mint new shares
             totalShares = totalShares + proposal.sharesRequested;
 
-            unsafeInternalTransfer(ESCROW, GUILD, depositToken, proposal.tributeOffered);
+            unsafeInternalTransfer(ESCROW, GUILD, proposal.tributeOffered);
 
         } else {
-            unsafeInternalTransfer(ESCROW, proposal.proposer, depositToken, proposal.tributeOffered);
+            unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
         }
         // Transfer proposalDeposit back to sponsor
         _returnDeposit(proposal.sponsor);
@@ -449,7 +456,7 @@ contract Boii {
 
         if (didPass) {
             proposal.flags[2] = true;
-            unsafeInternalTransfer(GUILD, proposal.applicant, depositToken, proposal.paymentRequested[proposal.milestoneIndex]);
+            unsafeInternalTransfer(GUILD, proposal.applicant, proposal.paymentRequested[proposal.milestoneIndex]);
 
             if (proposal.startPeriod.length > proposal.milestoneIndex + 1) {
                 //update active period and milestone index
@@ -523,14 +530,14 @@ contract Boii {
     }
 
     function _returnDeposit(address sponsor) internal {
-        unsafeInternalTransfer(ESCROW, sponsor, depositToken, proposalDeposit);
+        unsafeInternalTransfer(ESCROW, sponsor, proposalDeposit);
     }
 
-    function ragequit(uint256 sharesToBurn, uint256 proposalId) public {
+    function ragequit(uint256 sharesToBurn, uint256 proposalId) public nonReentrant {
         _ragequit(msg.sender, sharesToBurn, proposalId, false);
     }
 
-    function ragekick(address memberToKick) public {
+    function ragekick(address memberToKick) public nonReentrant {
         Member storage member = members[memberToKick];
 
         require(member.jailed != false, "member must be in jail");
@@ -567,7 +574,7 @@ contract Boii {
         }
     }
 
-    function cancelProposal(uint256 proposalId) public {
+    function cancelProposal(uint256 proposalId) public nonReentrant {
         Proposal storage proposal = proposals[proposalId];
         require(!proposal.flags[0], "proposal has already been sponsored");
         require(!proposal.flags[3], "proposal has already been cancelled");
@@ -583,21 +590,6 @@ contract Boii {
         return proposals[proposalId].votesByMember[memberAddress];
     }
 
-    function unsafeAddToBalance(address user, address token, uint256 amount) internal {
-        userTokenBalances[user][token] += amount;
-        userTokenBalances[TOTAL][token] += amount;
-    }
-
-    function unsafeSubtractFromBalance(address user, address token, uint256 amount) internal {
-        userTokenBalances[user][token] -= amount;
-        userTokenBalances[TOTAL][token] -= amount;
-    }
-
-    function unsafeInternalTransfer(address from, address to, address token, uint256 amount) internal {
-        unsafeSubtractFromBalance(from, token, amount);
-        unsafeAddToBalance(to, token, amount);
-    }
-
     function fairShare(uint256 balance, uint256 shares, uint256 totalShare) internal pure returns (uint256) {
         require(totalShare != 0);
 
@@ -609,6 +601,31 @@ contract Boii {
             return prod / totalShare;
         }
         return (balance / totalShare) * shares;
+    }
+
+    function withdrawBalance(uint256 amount) public nonReentrant {
+        _withdrawBalance(amount);
+    }
+
+    function _withdrawBalance(uint256 amount) internal {
+        require(userTokenBalances[msg.sender][depositToken] >= amount, "insufficient balance");
+        unsafeSubtractFromBalance(msg.sender, amount);
+        require(IERC20(depositToken).transfer(msg.sender, amount), "transfer failed");
+    }
+
+    function unsafeAddToBalance(address user, uint256 amount) internal {
+        userTokenBalances[user][depositToken] += amount;
+        userTokenBalances[TOTAL][depositToken] += amount;
+    }
+
+    function unsafeSubtractFromBalance(address user, uint256 amount) internal {
+        userTokenBalances[user][depositToken] -= amount;
+        userTokenBalances[TOTAL][depositToken] -= amount;
+    }
+
+    function unsafeInternalTransfer(address from, address to, uint256 amount) internal {
+        unsafeSubtractFromBalance(from, amount);
+        unsafeAddToBalance(to, amount);
     }
 
 }
