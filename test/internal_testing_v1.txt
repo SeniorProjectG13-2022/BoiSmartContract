@@ -1,0 +1,419 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+const { Contract, providers } = require("ethers");
+const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+// const tokenAbi = require("../utils/abi.json");
+// import tokenAbi from ;
+const { waffle } = require("hardhat");
+const provider = waffle.provider;
+
+const tokenAbi = [
+  {
+    constant: true,
+    inputs: [],
+    name: "name",
+    outputs: [
+      {
+        name: "",
+        type: "string",
+      },
+    ],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: false,
+    inputs: [
+      {
+        name: "guy",
+        type: "address",
+      },
+      {
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "approve",
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+      },
+    ],
+    payable: false,
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: "totalSupply",
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+      },
+    ],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: false,
+    inputs: [
+      {
+        name: "src",
+        type: "address",
+      },
+      {
+        name: "dst",
+        type: "address",
+      },
+      {
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "transferFrom",
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+      },
+    ],
+    payable: false,
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    constant: false,
+    inputs: [
+      {
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "withdraw",
+    outputs: [],
+    payable: false,
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: "decimals",
+    outputs: [
+      {
+        name: "",
+        type: "uint8",
+      },
+    ],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [
+      {
+        name: "",
+        type: "address",
+      },
+    ],
+    name: "balanceOf",
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+      },
+    ],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: "symbol",
+    outputs: [
+      {
+        name: "",
+        type: "string",
+      },
+    ],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: false,
+    inputs: [
+      {
+        name: "dst",
+        type: "address",
+      },
+      {
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "transfer",
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+      },
+    ],
+    payable: false,
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    constant: false,
+    inputs: [],
+    name: "deposit",
+    outputs: [],
+    payable: true,
+    stateMutability: "payable",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [
+      {
+        name: "",
+        type: "address",
+      },
+      {
+        name: "",
+        type: "address",
+      },
+    ],
+    name: "allowance",
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+      },
+    ],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    payable: true,
+    stateMutability: "payable",
+    type: "fallback",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        name: "src",
+        type: "address",
+      },
+      {
+        indexed: true,
+        name: "guy",
+        type: "address",
+      },
+      {
+        indexed: false,
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "Approval",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        name: "src",
+        type: "address",
+      },
+      {
+        indexed: true,
+        name: "dst",
+        type: "address",
+      },
+      {
+        indexed: false,
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "Transfer",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        name: "dst",
+        type: "address",
+      },
+      {
+        indexed: false,
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "Deposit",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        name: "src",
+        type: "address",
+      },
+      {
+        indexed: false,
+        name: "wad",
+        type: "uint256",
+      },
+    ],
+    name: "Withdrawal",
+    type: "event",
+  },
+];
+
+describe("Boii smart contract", function () {
+  const deployContract = async () => {
+    const params = {
+      summoner: "0x47a546d3352Fa4596C95B7CFE66fa8383c0A1ffF",
+      depositToken: "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6", //Ethereum token address in GOERLI
+      periodDuration: 60,
+      votingPeriodLength: 3,
+      gracePeriodLength: 3,
+      proposalDeposit: 10,
+      dilutionBound: 2,
+    };
+
+    console.log("START");
+
+    try {
+      // let provider = await providers.getDefaultProvider("hardhat");
+      // let signer = await hre.ethers.getSigner();
+
+      // console.log("signer", provider);
+
+      const Token = new Contract(
+        "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",
+        tokenAbi,
+        provider
+      );
+      // We get the contract to deploy
+      const Boii = await hre.ethers.getContractFactory("Boii");
+      const boii = await Boii.deploy(
+        params.summoner,
+        params.depositToken,
+        params.periodDuration,
+        params.votingPeriodLength,
+        params.gracePeriodLength,
+        params.proposalDeposit,
+        params.dilutionBound
+      );
+
+      await boii.deployed();
+      console.log("Greeter deployed to:", boii.address);
+
+      // const Token = await ethers.getContractAt(
+      //   "wETH",
+      //   params.depositToken,
+      //   ethers.getSigner()
+      // );
+
+      return { boii, Token };
+    } catch (err) {
+      console.log("ERROR:");
+      console.log(err);
+    }
+  };
+
+  describe("submitJoinProposal", function () {
+    it("normal proposal", async function () {
+      const { boii, Token } = await loadFixture(deployContract);
+
+      console.log(await boii.proposalCount());
+      console.log("boii.address", boii.address);
+      console.log("testBLF");
+
+      const app = await Token.approve(boii.address, 1000000000000000);
+      console.log("1");
+
+      await app.wait();
+      console.log("2");
+
+      const submitJoinTx = await boii.submitJoinProposal(
+        "0x5FbE86e8Cf95bA7E8D0d229F630aE67f552664cb", //applicant
+        10, //sharesRequest
+        1000000000000000, //tributeOffered (weii)
+        "capybaraDetails" //details (IPFSHash)
+      );
+      console.log("3");
+
+      await submitJoinTx.wait();
+      console.log("4");
+
+      expect(await boii.proposalCount().to.equal(1));
+      expect(await boii.proposals(0).to.have());
+    });
+  });
+
+  // it("Should return the new greeting once it's changed", async function () {
+  //   const params = {
+  //     summoner: "0x47a546d3352Fa4596C95B7CFE66fa8383c0A1ffF",
+  //     depositToken: "0x7af963cf6d228e564e2a0aa0ddbf06210b38615d", //Ethereum token address in GOERLI
+  //     periodDuration: 60,
+  //     votingPeriodLength: 3,
+  //     gracePeriodLength: 3,
+  //     proposalDeposit: 10,
+  //     dilutionBound: 2,
+  //   };
+
+  //   console.log("START");
+
+  //   try {
+  //     // We get the contract to deploy
+  //     const Boii = await hre.ethers.getContractFactory("Boii");
+  //     const boii = await Boii.deploy(
+  //       params.summoner,
+  //       params.depositToken,
+  //       params.periodDuration,
+  //       params.votingPeriodLength,
+  //       params.gracePeriodLength,
+  //       params.proposalDeposit,
+  //       params.dilutionBound
+  //     );
+
+  //     await boii.deployed();
+  //     console.log("Greeter deployed to:", boii.address);
+
+  //     // const Greeter = await ethers.getContractFactory("Greeter");
+  //     // const greeter = await Greeter.deploy("Hello, world!");
+  //     // await greeter.deployed();
+
+  //     // expect(await greeter.greet()).to.equal("Hello, world!");
+
+  //     // const setGreetingTx = await greeter.setGreeting("Hola, mundo!");
+
+  //     // // wait until the transaction is mined
+  //     // await setGreetingTx.wait();
+
+  //     expect(await boii.address).to.not("");
+  //   } catch (err) {
+  //     console.log("ERROR:");
+  //     console.log(err);
+  //   }
+  // });
+});

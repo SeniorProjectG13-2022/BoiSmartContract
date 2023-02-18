@@ -1,6 +1,6 @@
 const hardhat = require("hardhat/config");
 const { usePlugin } = hardhat;
-
+require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-ethers");
 // require("@nomiclabs/hardhat-etherscan");
 // require("@nomiclabs/hardhat-truffle5");
@@ -18,13 +18,15 @@ module.exports = {
       url: "http://localhost:8545",
       deployedContracts: {
         moloch: "",
-        pool: ""
-      }
+        pool: "",
+      },
     },
     goerli: {
-      url: "https://eth-goerli.g.alchemy.com/v2/Qzotqx0kES_6vpzCAVHL_vGX_7lAEQs8",//process.env.GOERLI_URL || "",
-      accounts: ["cd385b618b23e3416a14efc407866aec72ef532207c51cae5d89cb0b8a359e05"],
-        //process.env.GOERLI_PRIVATE_KEY !== undefined ? [process.env.GOERLI_PRIVATE_KEY] : [],
+      url: "https://eth-goerli.g.alchemy.com/v2/Qzotqx0kES_6vpzCAVHL_vGX_7lAEQs8", //process.env.GOERLI_URL || "",
+      accounts: [
+        "cd385b618b23e3416a14efc407866aec72ef532207c51cae5d89cb0b8a359e05",
+      ],
+      //process.env.GOERLI_PRIVATE_KEY !== undefined ? [process.env.GOERLI_PRIVATE_KEY] : [],
     },
     /* ropsten: {
       url: `https://ropsten.infura.io/v3/${INFURA_API_KEY}`,
@@ -43,17 +45,17 @@ module.exports = {
       }
     }, */
     coverage: {
-      url: "http://localhost:8555"
-    }
+      url: "http://localhost:8555",
+    },
   },
   solidity: {
     version: "0.8.17",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200
-      }
-    }
+        runs: 200,
+      },
+    },
   },
   /*
   etherscan: {
