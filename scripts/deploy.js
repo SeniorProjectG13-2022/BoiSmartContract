@@ -16,7 +16,7 @@ async function main() {
 //   temp constructor parameter
 const params = {
     summoner: "0x47a546d3352Fa4596C95B7CFE66fa8383c0A1ffF",
-    depositToken: "0x7af963cf6d228e564e2a0aa0ddbf06210b38615d",//Ethereum token address in GOERLI
+    depositToken: "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",// Wrapped Ethereum (wETH) token address in GOERLI
     periodDuration: 60,
     votingPeriodLength: 3,
     gracePeriodLength: 3,
