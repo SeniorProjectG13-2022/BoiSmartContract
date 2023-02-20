@@ -117,6 +117,10 @@ contract Boii is ReentrancyGuard{
         return proposals[proposalId].paymentRequested;
     }
 
+    function getStartPeriod(uint256 proposalId) public view returns (uint256[] memory) {
+        return proposals[proposalId].startPeriod;
+    }
+
     function getProposalFlags(uint256 proposalId) public view returns (bool[6] memory) {
         return proposals[proposalId].flags;
     }
@@ -216,8 +220,8 @@ contract Boii is ReentrancyGuard{
 
         uint256[] memory paymentRequested = new uint256[](1); //join-request proposal is not required payment requested
         paymentRequested[0] = 0;
-
-        _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, details, flags);
+        
+        _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, paymentRequested, details, flags); //second paymentRequested is start period which is not required in this kind of proposal
 
         return proposalCount - 1;
     }
@@ -226,6 +230,7 @@ contract Boii is ReentrancyGuard{
         address applicant,
         uint256 tributeOffered,
         uint256[] memory paymentRequested,
+        uint256[] memory startPeriod,
         string memory details
     ) public nonReentrant returns (uint256 proposalId) {
         require(applicant != address(0), "applicant cannot be 0");
@@ -233,7 +238,7 @@ contract Boii is ReentrancyGuard{
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
         
         bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
-        _submitProposal(applicant, 0, tributeOffered, paymentRequested, details, flags); // shares request is not required in project funding proposal
+        _submitProposal(applicant, 0, tributeOffered, paymentRequested, startPeriod, details, flags); // shares request is not required in project funding proposal
 
         return proposalCount - 1;
     }
@@ -253,7 +258,7 @@ contract Boii is ReentrancyGuard{
         uint256[] memory _temp = new uint256[](1); // guildkick without paymentRequested
         _temp[0] = 0;
 
-        _submitProposal(memberToKick, 0, 0, _temp, details, flags);
+        _submitProposal(memberToKick, 0, 0, _temp, _temp, details, flags);
         return proposalCount - 1;
     }
 
@@ -262,6 +267,7 @@ contract Boii is ReentrancyGuard{
         uint256 sharesRequested, 
         uint256 tributeOffered, 
         uint256[] memory paymentRequested, 
+        uint256[] memory startPeriod,
         string memory projectHash, 
         bool[6] memory flags
     ) internal {
@@ -271,7 +277,7 @@ contract Boii is ReentrancyGuard{
         proposal.sharesRequested = sharesRequested;
         proposal.tributeOffered = tributeOffered;
         proposal.paymentRequested = paymentRequested;
-        proposal.startPeriod = [0];
+        proposal.startPeriod = startPeriod;
         proposal.activePeriod = 0;
         proposal.milestoneIndex = 0;
         proposal.yesVoted = 0;
@@ -357,11 +363,11 @@ contract Boii is ReentrancyGuard{
         return getCurrentPeriod() >= startingPeriod + votingPeriodLength;
     }
 
-    function a_testme() public {
-        userTokenBalances[ESCROW][depositToken] = 10000;
-        userTokenBalances[TOTAL][depositToken] = 10000;
-        proposals[0].activePeriod = 0;
-    }
+    // function a_testme() public {
+    //     userTokenBalances[ESCROW][depositToken] = 10000;
+    //     userTokenBalances[TOTAL][depositToken] = 10000;
+    //     proposals[0].activePeriod = 0;
+    // }
 
     function preProcessProposal(uint256 proposalId) public nonReentrant {
         _validatePreProposalForProcessing(proposalId);
@@ -627,5 +633,8 @@ contract Boii is ReentrancyGuard{
         unsafeSubtractFromBalance(from, amount);
         unsafeAddToBalance(to, amount);
     }
+
+    // function externalDeposit() public payable {
+    // }
 
 }
