@@ -228,7 +228,6 @@ contract Boii is ReentrancyGuard{
 
     function submitProjectProposal(
         address applicant,
-        uint256 tributeOffered,
         uint256[] memory paymentRequested,
         uint256[] memory startPeriod,
         string memory details
@@ -238,7 +237,7 @@ contract Boii is ReentrancyGuard{
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
         
         bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
-        _submitProposal(applicant, 0, tributeOffered, paymentRequested, startPeriod, details, flags); // shares request is not required in project funding proposal
+        _submitProposal(applicant, 0, 0, paymentRequested, startPeriod, details, flags); // shares request is not required in project funding proposal
 
         return proposalCount - 1;
     }
