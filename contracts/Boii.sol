@@ -53,7 +53,8 @@ contract Boii is ReentrancyGuard{
         bool[6] flags;
         string projectHash;
         uint256 maxTotalSharesAtYesVote;
-        mapping(address => Vote) votesByMember;
+        // mapping(address => Vote) votesByMember;
+        mapping(uint256 => mapping(address => Vote)) votesByMemberByMilestone;
     }
     
     //Internal contract variables
@@ -69,6 +70,12 @@ contract Boii is ReentrancyGuard{
     mapping(address => bool) public proposedToKick;
     mapping(address => Member) public members;
     mapping(uint256 => Proposal) public proposals;
+
+    // event for indexing all proposals
+    
+    event SubmitProposal(address indexed applicant, uint256 sharesRequested, uint256 tributeOffered, uint256 paymentRequested, uint256 details, bool[] indexed flags);
+    event SponsorProposal();
+
 
     constructor(
         address _summoner,
@@ -341,10 +348,10 @@ contract Boii is ReentrancyGuard{
 
         require(getCurrentPeriod() >= proposal.activePeriod, "voting period has not started");
         require(!hasVotingPeriodExpired(proposal.activePeriod), "proposal voting period has expired");
-        require(proposal.votesByMember[msg.sender] == Vote.Null, "member has already voted");
+        require(proposal.votesByMemberByMilestone[proposal.milestoneIndex][msg.sender] == Vote.Null, "member has already voted");
         require(vote == Vote.Yes || vote == Vote.No, "vote must be either Yes or No");
 
-        proposal.votesByMember[msg.sender] = vote;
+        proposal.votesByMemberByMilestone[proposal.milestoneIndex][msg.sender] = vote;
 
         if (vote == Vote.Yes) {
             proposal.yesVoted = proposal.yesVoted + member.shares;
@@ -367,6 +374,10 @@ contract Boii is ReentrancyGuard{
     //     userTokenBalances[TOTAL][depositToken] = 10000;
     //     proposals[0].activePeriod = 0;
     // }
+
+    function a_test_prepare_for_vote() public {
+        proposals[0].activePeriod = 0;
+    }
 
     function preProcessProposal(uint256 proposalId) public nonReentrant {
         _validatePreProposalForProcessing(proposalId);
@@ -563,8 +574,8 @@ contract Boii is ReentrancyGuard{
             // require(canRagequit(memberAddress, proposalId), "cannot ragequit until highest index proposal member voted YES on is processed");
             require(proposals[proposalId].flags[5], "proposal must be preprocessed");
             require(getCurrentPeriod() < (proposals[proposalId].activePeriod + votingPeriodLength + gracePeriodLength), "proposal must be in grace period");
-            require(proposals[proposalId].votesByMember[memberAddress] != Vote(0), "member didn't vote on a proposal");
-            require(proposals[proposalId].votesByMember[memberAddress] != Vote(proposals[proposalId].flags[2] ? 1 : 2), "member who voted the same result cannot ragequit");
+            require(proposals[proposalId].votesByMemberByMilestone[proposals[proposalId].milestoneIndex][memberAddress] != Vote(0), "member didn't vote on a proposal");
+            require(proposals[proposalId].votesByMemberByMilestone[proposals[proposalId].milestoneIndex][memberAddress] != Vote(proposals[proposalId].flags[2] ? 1 : 2), "member who voted the same result cannot ragequit");
         }
         // burn shares
         member.shares = member.shares - sharesToBurn;
@@ -590,9 +601,14 @@ contract Boii is ReentrancyGuard{
         // unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeToken, proposal.tributeOffered);
     }
 
-    function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
-        require(members[memberAddress].exists, "member does not exist");
-        return proposals[proposalId].votesByMember[memberAddress];
+    // function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
+    //     require(members[memberAddress].exists, "member does not exist");
+    //     return proposals[proposalId].votesByMember[memberAddress];
+    // }
+
+    function getMemberProposalVoteByMilestone(address memberAddress, uint256 proposalId, uint256 milestone) public view returns (Vote) {
+        require(members[memberAddress].exists, "member doesn not exist");
+        return proposals[proposalId].votesByMemberByMilestone[milestone][memberAddress];
     }
 
     function fairShare(uint256 balance, uint256 shares, uint256 totalShare) internal pure returns (uint256) {
