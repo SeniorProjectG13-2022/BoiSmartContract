@@ -75,6 +75,12 @@ contract Boii is ReentrancyGuard{
     
     event UpdateProposal(uint256 indexed proposalId,string projectHash, uint256[] paymentRequest, bool[6] flags, uint256 yesVoted, uint256 noVoted, uint256 milestoneIndex);
 
+    // Modifier
+    modifier onlyMember {
+        require(members[msg.sender].shares > 0, "not a member");
+        _;
+    }
+
     constructor(
         address _summoner,
         address _depositToken,
@@ -297,7 +303,7 @@ contract Boii is ReentrancyGuard{
 
     function sponsorProposal(
         uint256 proposalId
-    ) public nonReentrant {
+    ) public nonReentrant onlyMember {
         // collect proposal deposit from sponsor and store it in the Moloch until the proposal is processed
         require(IERC20(depositToken).transferFrom(msg.sender, address(this), proposalDeposit), "proposal deposit token transfer failed");
         unsafeAddToBalance(ESCROW, proposalDeposit);
@@ -338,7 +344,7 @@ contract Boii is ReentrancyGuard{
         emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
     }
 
-    function submitVote(uint256 proposalIndex, uint8 uintVote) public nonReentrant {
+    function submitVote(uint256 proposalIndex, uint8 uintVote) public nonReentrant onlyMember {
         Member storage member = members[msg.sender];
 
         require(proposalIndex < proposalCount, "proposal does not exist");
@@ -555,7 +561,7 @@ contract Boii is ReentrancyGuard{
         unsafeInternalTransfer(ESCROW, sponsor, proposalDeposit);
     }
 
-    function ragequit(uint256 sharesToBurn, uint256 proposalId) public nonReentrant {
+    function ragequit(uint256 sharesToBurn, uint256 proposalId) public nonReentrant onlyMember {
         _ragequit(msg.sender, sharesToBurn, proposalId, false);
     }
 
