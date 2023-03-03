@@ -73,7 +73,7 @@ contract Boii is ReentrancyGuard{
 
     // event for indexing all proposals
     
-    event UpdateProposal(uint256 indexed proposalId,string indexed projectHash, uint256[] paymentRequest, bool[6] flags, uint256 yesVoted, uint256 noVoted, uint256 milestoneIndex);
+    event UpdateProposal(uint256 indexed proposalId,string projectHash, uint256[] paymentRequest, bool[6] flags, uint256 yesVoted, uint256 noVoted, uint256 milestoneIndex);
 
     constructor(
         address _summoner,
