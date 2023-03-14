@@ -17,9 +17,9 @@ async function main() {
 const params = {
     summoner: "0x47a546d3352Fa4596C95B7CFE66fa8383c0A1ffF",
     depositToken: "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",// Wrapped Ethereum (wETH) token address in GOERLI
-    periodDuration: 3600,
-    votingPeriodLength: 72,
-    gracePeriodLength: 72,
+    periodDuration: 60,
+    votingPeriodLength: 5,
+    gracePeriodLength: 5,
     proposalDeposit: 1000,
     dilutionBound: 2,
 }

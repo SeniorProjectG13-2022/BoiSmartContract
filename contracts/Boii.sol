@@ -33,7 +33,6 @@ contract Boii is ReentrancyGuard{
     struct Member {
         uint256 shares;
         bool exists;
-        uint256 highestIndexVote; 
         bool jailed;
     }
 
@@ -73,7 +72,7 @@ contract Boii is ReentrancyGuard{
 
     // event for indexing all proposals
     
-    event UpdateProposal(uint256 indexed proposalId,string projectHash, uint256[] paymentRequest, bool[6] flags, uint256 yesVoted, uint256 noVoted, uint256 milestoneIndex);
+    event UpdateProposal(uint256 indexed proposalId, address proposer, string projectHash, uint256[] paymentRequest, bool[6] flags, uint256 yesVoted, uint256 noVoted, uint256 milestoneIndex);
 
     // Modifier
     modifier onlyMember {
@@ -109,7 +108,7 @@ contract Boii is ReentrancyGuard{
         
         summoningTime = block.timestamp;
 
-        members[_summoner] = Member(1, true, 0, false);
+        members[_summoner] = Member(1, true, false);
         totalShares = 1;
 
         // NOTE: The Moloch emit the deploy event.
@@ -296,7 +295,7 @@ contract Boii is ReentrancyGuard{
         proposal.projectHash = projectHash;
         proposal.maxTotalSharesAtYesVote = 0;
 
-        emit UpdateProposal(proposalCount, projectHash, paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalCount, proposal.proposer, projectHash, paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
 
         proposalCount += 1;
     } 
@@ -341,7 +340,7 @@ contract Boii is ReentrancyGuard{
         //set flag
         proposal.flags[0] = true; // sponsored
 
-        emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
     }
 
     function submitVote(uint256 proposalIndex, uint8 uintVote) public nonReentrant onlyMember {
@@ -372,7 +371,7 @@ contract Boii is ReentrancyGuard{
             proposal.noVoted = proposal.noVoted + member.shares;
         }
 
-        emit UpdateProposal(proposalIndex, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalIndex, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
     }
 
     function hasVotingPeriodExpired(uint256 startingPeriod) public view returns (bool) {
@@ -387,6 +386,11 @@ contract Boii is ReentrancyGuard{
 
     function a_test_prepare_for_vote() public {
         proposals[0].activePeriod = 0;
+    }
+
+    function testDeposit(uint256 amount) public {
+        require(IERC20(depositToken).transferFrom(msg.sender, address(this), amount), "test deposit token transfer failed");
+        unsafeAddToBalance(msg.sender, amount);
     }
 
     function preProcessProposal(uint256 proposalId) public nonReentrant {
@@ -413,7 +417,7 @@ contract Boii is ReentrancyGuard{
             proposal.flags[2] = didPass;
         }
 
-        emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
     }
 
     function processProposal(uint256 proposalId) public nonReentrant {
@@ -455,7 +459,7 @@ contract Boii is ReentrancyGuard{
 
             // the applicant is a new member, create a new record for them
             } else {
-                members[proposal.applicant] = Member(proposal.sharesRequested, true, 0, false);
+                members[proposal.applicant] = Member(proposal.sharesRequested, true, false);
             }
             // mint new shares
             totalShares = totalShares + proposal.sharesRequested;
@@ -465,7 +469,7 @@ contract Boii is ReentrancyGuard{
         } else {
             unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
         }
-        emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         // Transfer proposalDeposit back to sponsor
         _returnDeposit(proposal.sponsor);
     }
@@ -495,7 +499,7 @@ contract Boii is ReentrancyGuard{
                 proposal.flags[5] = false; //preprocessed = false
             }
         }
-        emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         if (proposal.milestoneIndex == 0) {
             _returnDeposit(proposal.sponsor);
         }
@@ -516,7 +520,7 @@ contract Boii is ReentrancyGuard{
             member.jailed = true;
             
         }
-        emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         proposedToKick[proposal.applicant] = false;
         _returnDeposit(proposal.sponsor);
     }
@@ -609,8 +613,8 @@ contract Boii is ReentrancyGuard{
         require(msg.sender == proposal.proposer, "solely the proposer can cancel");
 
         proposal.flags[3] = true; // cancelled
-        emit UpdateProposal(proposalId, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
-        // unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeToken, proposal.tributeOffered);
+        emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
     }
 
     // function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
