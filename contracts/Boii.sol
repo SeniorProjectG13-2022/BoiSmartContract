@@ -21,7 +21,7 @@ contract Boii is ReentrancyGuard{
     uint256 constant MAX_VOTING_PERIOD_LENGTH = 10**18;
     uint256 constant MAX_GRACE_PERIOD_LENGTH = 10**18;
     uint256 constant MAX_DILUTION_BOUND = 10**18;
-    uint256 constant MAX_NUMBER_OF_SHARES = 10**18;
+    uint256 constant MAX_NUMBER_OF_SHARES = 100;
 
     enum Vote {
         Null,
@@ -388,6 +388,51 @@ contract Boii is ReentrancyGuard{
         proposals[0].activePeriod = 0;
     }
 
+    function testAddJailedMember(address jailedOne) public {
+        members[jailedOne] = Member(1, true, true);
+        totalShares += 1;
+    }
+
+    function testAddMember(address member) public {
+        members[member] = Member(1, true, false);
+        totalShares += 1;
+    }
+
+    function testAddNoSharesMember(address noSharesMember) public {
+        members[noSharesMember] = Member(0, true, false);
+    }
+
+    function testSetSponsorFlag(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        proposal.flags[0] = true;
+    }
+
+    function testCancelFlag(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        proposal.flags[3] = true;
+    }
+
+    function testProcessFlag(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        proposal.flags[1] = true;
+    }
+
+    function testPreProcessFlag(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        proposal.flags[5] = true;
+    }
+
+    function testSetMoreYesVote(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        proposal.yesVoted = 100;
+        proposal.noVoted = 0;
+    }
+
+    function testExceedDilutionBound(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        proposal.maxTotalSharesAtYesVote = 100000000000000;
+    }
+
     function testDeposit(uint256 amount) public {
         require(IERC20(depositToken).transferFrom(msg.sender, address(this), amount), "test deposit token transfer failed");
         unsafeAddToBalance(msg.sender, amount);
@@ -467,6 +512,7 @@ contract Boii is ReentrancyGuard{
             unsafeInternalTransfer(ESCROW, GUILD, proposal.tributeOffered);
 
         } else {
+            proposal.flags[2] = false;
             unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
         }
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
@@ -497,7 +543,12 @@ contract Boii is ReentrancyGuard{
                 //reset processed, preprocessed flag in case of the proposal has passed and the next milestone is existed
                 proposal.flags[1] = false; //processed = false
                 proposal.flags[5] = false; //preprocessed = false
+                //reset votes result
+                proposal.yesVoted = 0;
+                proposal.noVoted = 0;
             }
+        } else {
+            proposal.flags[2] = false;
         }
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         if (proposal.milestoneIndex == 0) {
@@ -516,9 +567,12 @@ contract Boii is ReentrancyGuard{
 
         if (didPass) {
             proposal.flags[2] = true;
-            Member memory member = members[proposal.applicant];
-            member.jailed = true;
+            Member storage memberToKick = members[proposal.applicant];
+            memberToKick.jailed = true;
+            _ragekick(proposal.applicant);
             
+        } else {
+            proposal.flags[2] = false;
         }
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         proposedToKick[proposal.applicant] = false;
@@ -569,7 +623,7 @@ contract Boii is ReentrancyGuard{
         _ragequit(msg.sender, sharesToBurn, proposalId, false);
     }
 
-    function ragekick(address memberToKick) public nonReentrant {
+    function _ragekick(address memberToKick) internal {
         Member storage member = members[memberToKick];
 
         require(member.jailed != false, "member must be in jail");
