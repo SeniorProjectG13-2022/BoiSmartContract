@@ -57,8 +57,8 @@ contract Boii is ReentrancyGuard{
     }
     
     //Internal contract variables
-    uint256 public proposalCount;
-    uint256 public totalShares;
+    uint256 public proposalCount;   //the number of proposals in smart contract
+    uint256 public totalShares;     //total existed shares
 
     address public constant GUILD = address(0xdead);
     address public constant ESCROW = address(0xbeef);
@@ -66,12 +66,12 @@ contract Boii is ReentrancyGuard{
 
     mapping (address => mapping (address => uint256)) public userTokenBalances;
     
-    mapping(address => bool) public proposedToKick;
-    mapping(address => Member) public members;
-    mapping(uint256 => Proposal) public proposals;
+    mapping(address => bool) public proposedToKick;         //list of member who proposed to be kicked
+    mapping(address => Member) public members;              //all members
+    mapping(uint256 => Proposal) public proposals;          //all proposals
+    mapping(address => uint256) public totalMemberShares;   //share of each members includes shares requested from proposal. use this to limit the share per member
 
-    // event for indexing all proposals
-    
+    // event for indexing all proposals status update
     event UpdateProposal(uint256 indexed proposalId, address proposer, string projectHash, uint256[] paymentRequest, bool[6] flags, uint256 yesVoted, uint256 noVoted, uint256 milestoneIndex);
 
     // Modifier
@@ -109,9 +109,8 @@ contract Boii is ReentrancyGuard{
         summoningTime = block.timestamp;
 
         members[_summoner] = Member(1, true, false);
+        totalMemberShares[_summoner] = 1;
         totalShares = 1;
-
-        // NOTE: The Moloch emit the deploy event.
     }
 
     //Getter and helper function
@@ -139,78 +138,6 @@ contract Boii is ReentrancyGuard{
         return userTokenBalances[user][token];
     }
 
-    // FIXME: Cannot use standard ABI, Is it okay to use experimentl version ABI v.2
-    // function getAllProposals() public view returns () {
-    //     string[] memory hash;
-    //     uint256[] memory totalFundRequest;
-
-    //     // for(uint256 i; i < proposalCount; i++) {
-
-    //     // }
-    //     return proposals;
-    // }
-    // function getSingleProposal(uint256 i) public view returns (Proposal memory) {
-    //     return proposals[i];
-    // }
-
-    // FIXME: add check mechanism to see if the member has already voted. There are 2 ways
-    // 1) add member address as optional parameter 
-    // 2) create separate function
-    // function getProposalById(uint256 proposalId) public view returns (
-    //     address, //applicant
-    //     address, //proposer
-    //     address, //sponsor
-    //     uint256, //sharesRequested
-    //     uint256, //tributeOffered
-    //     uint256, //paymentRequested
-    //     uint256, //startPeriod
-    //     uint256, //activePeriod
-    //     uint256, //yesVoted 
-    //     uint256, //noVoted
-    //     bool[5] memory, //flags 
-    //     string memory, //projectHash
-    //     uint256 //maxTotalSharesAtYesVote
-    // ) {        
-    //     return (
-    //         proposals[proposalId].applicant,
-    //         proposals[proposalId].proposer,
-    //         proposals[proposalId].sponsor,
-    //         proposals[proposalId].sharesRequested,
-    //         proposals[proposalId].tributeOffered,
-    //         proposals[proposalId].paymentRequested,
-    //         proposals[proposalId].startPeriod,
-    //         proposals[proposalId].activePeriod,
-    //         proposals[proposalId].yesVoted,
-    //         proposals[proposalId].noVoted,
-    //         proposals[proposalId].flags, 
-    //         proposals[proposalId].projectHash,
-    //         proposals[proposalId].maxTotalSharesAtYesVote
-    //     );
-    // }
-
-    // SUBMIT PROPOSALS
-    // function submitProposal(
-    //     address applicant,
-    //     uint256 sharesRequested,
-    //     uint256 tributeOffered,
-    //     uint256[] memory paymentRequested,
-    //     string memory projectHash
-    // ) public returns (uint256 proposalId) {
-    //     require(sharesRequested + sharesRequested <= MAX_NUMBER_OF_SHARES, "too many shares requested");
-    //     require(applicant != address(0), "applicant cannot be 0");
-    //     require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
-    //     require(members[applicant].jailed == false, "proposal applicant must not be jailed");
-
-    //     // collect tribute from proposer and store it in the Moloch until the proposal is processed
-    //     // require(IERC20(tributeToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
-    //     // unsafeAddToBalance(ESCROW, tributeToken, tributeOffered);
-
-    //     bool[5] memory flags; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
-
-    //     _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, projectHash, flags);
-    //     return proposalCount - 1;
-    // }
-
     function submitJoinProposal(
         address applicant,
         uint256 sharesRequested,
@@ -221,16 +148,18 @@ contract Boii is ReentrancyGuard{
         require(applicant != address(0), "applicant cannot be 0");
         require(applicant != GUILD && applicant != ESCROW && applicant != TOTAL, "applicant address cannot be reserved");
         require(members[applicant].jailed == false, "proposal applicant must not be jailed");
+        require(totalMemberShares[applicant] + sharesRequested <= 9, "member must not have more than 9 shares");
 
-        // collect tribute from proposer and store it in the Moloch until the proposal is processed
+        // collect tribute from proposer and store it in the smart contract until the proposal is processed
         require(IERC20(depositToken).transferFrom(msg.sender, address(this), tributeOffered), "tribute token transfer failed");
         unsafeAddToBalance(ESCROW, tributeOffered);
 
-        bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick]
+        bool[6] memory flags = [false, false, false, false, false, false]; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
 
         uint256[] memory paymentRequested = new uint256[](1); //join-request proposal is not required payment requested
         paymentRequested[0] = 0;
         
+        totalMemberShares[applicant] += sharesRequested;    //add temporary shares for checking limit to the applicant
         _submitProposal(applicant, sharesRequested, tributeOffered, paymentRequested, paymentRequested, details, flags); //second paymentRequested is start period which is not required in this kind of proposal
 
         return proposalCount - 1;
@@ -261,10 +190,10 @@ contract Boii is ReentrancyGuard{
         require(member.shares > 0 , "member must have at least one share");
         require(members[memberToKick].jailed == false, "member must not already be jailed");
 
-        bool[6] memory flags; // [sponsored, processed, didPass, cancelled, guildkick]
-        flags[4] = true; // guild kick
+        bool[6] memory flags; // [sponsored, processed, didPass, cancelled, guildkick, preprocessed]
+        flags[4] = true; // set guildkick flag
 
-        uint256[] memory _temp = new uint256[](1); // guildkick without paymentRequested
+        uint256[] memory _temp = new uint256[](1); // guildkick proposal don't need paymentRequested
         _temp[0] = 0;
 
         _submitProposal(memberToKick, 0, 0, _temp, _temp, details, flags);
@@ -303,7 +232,7 @@ contract Boii is ReentrancyGuard{
     function sponsorProposal(
         uint256 proposalId
     ) public nonReentrant onlyMember {
-        // collect proposal deposit from sponsor and store it in the Moloch until the proposal is processed
+        // collect proposal deposit from sponsor and store it in the smart contract until the proposal is processed
         require(IERC20(depositToken).transferFrom(msg.sender, address(this), proposalDeposit), "proposal deposit token transfer failed");
         unsafeAddToBalance(ESCROW, proposalDeposit);
 
@@ -315,30 +244,27 @@ contract Boii is ReentrancyGuard{
         require(!proposal.flags[1], "proposal has been processed");
         require(members[proposal.applicant].jailed == false, "proposal applicant must not be jailed");
 
-        // guild kick proposal
+        // for guild kick proposal
         if (proposal.flags[4]) {
             require(!proposedToKick[proposal.applicant], "already proposed to kick");
             proposedToKick[proposal.applicant] = true;
         }
 
-        // compute startingPeriod for proposal
-        // uint256 activePeriod = getCurrentPeriod() + 1;
+        // compute starting period for proposal
+        // set active period to be next period
         if (proposal.milestoneIndex == 0) {
             proposal.startPeriod[0] = getCurrentPeriod() + 1;
+
+            // set starting period for each milestone by plus the distancing period with the base period (active period)
             for (uint i=1; i < proposal.startPeriod.length; i++) {
                 proposal.startPeriod[i] = proposal.startPeriod[i-1] + proposal.startPeriod[i];
             }
         }
         proposal.activePeriod = proposal.startPeriod[0];
 
-        //set first period
-        // proposal.activePeriod = activePeriod;
+        proposal.sponsor = msg.sender;  // set sponsor of the proposal
 
-        //set sponsor
-        proposal.sponsor = msg.sender;
-
-        //set flag
-        proposal.flags[0] = true; // sponsored
+        proposal.flags[0] = true; // set sponsored flag
 
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
     }
@@ -359,7 +285,7 @@ contract Boii is ReentrancyGuard{
         require(vote == Vote.Yes || vote == Vote.No, "vote must be either Yes or No");
 
         proposal.votesByMemberByMilestone[proposal.milestoneIndex][msg.sender] = vote;
-
+        // update Voting result
         if (vote == Vote.Yes) {
             proposal.yesVoted = proposal.yesVoted + member.shares;
 
@@ -376,16 +302,6 @@ contract Boii is ReentrancyGuard{
 
     function hasVotingPeriodExpired(uint256 startingPeriod) public view returns (bool) {
         return getCurrentPeriod() >= startingPeriod + votingPeriodLength;
-    }
-
-    // function a_testme() public {
-    //     userTokenBalances[ESCROW][depositToken] = 10000;
-    //     userTokenBalances[TOTAL][depositToken] = 10000;
-    //     proposals[0].activePeriod = 0;
-    // }
-
-    function a_test_prepare_for_vote() public {
-        proposals[0].activePeriod = 0;
     }
 
     function testAddJailedMember(address jailedOne) public {
@@ -470,7 +386,7 @@ contract Boii is ReentrancyGuard{
         bool didPass = _didPass(proposalId);
         
         Proposal storage proposal = proposals[proposalId];
-
+        // process proposal based on proposal type
         if (proposal.flags[4] != true) {
             if (proposal.paymentRequested[0] == 0) {
                 _processJoinProposal(proposalId, didPass);
@@ -480,7 +396,6 @@ contract Boii is ReentrancyGuard{
         } else {
             _processGuildKickProposal(proposalId, didPass);
         }
-
     }
 
     function _processJoinProposal(uint256 proposalId, bool isPass) internal {
@@ -490,15 +405,15 @@ contract Boii is ReentrancyGuard{
         // set processed flag
         proposal.flags[1] = true;
 
-        // Make the proposal fail if the new total number of shares and loot exceeds the limit
+        // Make the proposal fail if the new total number of shares exceeds the limit
         if (totalShares + proposal.sharesRequested > MAX_NUMBER_OF_SHARES) {
             didPass = false;
         }
 
         if (didPass) {
-            proposal.flags[2] = true; // didPass
+            proposal.flags[2] = true; // set didPass flag
 
-            // if the applicant is already a member, add to their existing shares & loot
+            // if the applicant is already a member, add to their existing shares
             if (members[proposal.applicant].exists) {
                 members[proposal.applicant].shares = members[proposal.applicant].shares + proposal.sharesRequested;
 
@@ -508,11 +423,12 @@ contract Boii is ReentrancyGuard{
             }
             // mint new shares
             totalShares = totalShares + proposal.sharesRequested;
-
+            // transfer token temporary address to GUILD address (make thesse token to be assets of BOII)
             unsafeInternalTransfer(ESCROW, GUILD, proposal.tributeOffered);
 
         } else {
-            proposal.flags[2] = false;
+            proposal.flags[2] = false; // set didPass flag to false
+            totalMemberShares[proposal.applicant] -= proposal.sharesRequested;  // reduce the temporary shares in case of failed proposal
             unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
         }
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
@@ -533,24 +449,27 @@ contract Boii is ReentrancyGuard{
         }
 
         if (didPass) {
-            proposal.flags[2] = true;
+            proposal.flags[2] = true; //set didPass flag to true
             unsafeInternalTransfer(GUILD, proposal.applicant, proposal.paymentRequested[proposal.milestoneIndex]);
 
+            // if there is another milestone
             if (proposal.startPeriod.length > proposal.milestoneIndex + 1) {
-                //update active period and milestone index
+                // update active period and milestone index
                 proposal.milestoneIndex += 1;
                 proposal.activePeriod = proposal.startPeriod[proposal.milestoneIndex];
-                //reset processed, preprocessed flag in case of the proposal has passed and the next milestone is existed
-                proposal.flags[1] = false; //processed = false
-                proposal.flags[5] = false; //preprocessed = false
-                //reset votes result
+                // reset processed, preprocessed flag in case of the proposal has passed and the next milestone is existed
+                proposal.flags[1] = false; //set processed flag to false
+                proposal.flags[5] = false; //set preprocessed flag to false
+                // reset votes result
                 proposal.yesVoted = 0;
                 proposal.noVoted = 0;
             }
         } else {
-            proposal.flags[2] = false;
+            proposal.flags[2] = false;  //set didPass flag to false
         }
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
+        
+        // return the sponsoring cost to sponsor
         if (proposal.milestoneIndex == 0) {
             _returnDeposit(proposal.sponsor);
         }
@@ -565,6 +484,7 @@ contract Boii is ReentrancyGuard{
         // set processed flag
         proposal.flags[1] = true;
 
+        // trigger ragekick function to burn all shares of the member
         if (didPass) {
             proposal.flags[2] = true;
             Member storage memberToKick = members[proposal.applicant];
@@ -638,10 +558,9 @@ contract Boii is ReentrancyGuard{
         Member storage member = members[memberAddress];
 
         require(member.shares >= sharesToBurn, "insufficient shares");
-
-        if(!isKick) {//ragequit
-            // TODO: implement canRagequit function
-            // require(canRagequit(memberAddress, proposalId), "cannot ragequit until highest index proposal member voted YES on is processed");
+        
+        // member ragequit themself 
+        if(!isKick) {
             require(proposals[proposalId].flags[5], "proposal must be preprocessed");
             require(getCurrentPeriod() < (proposals[proposalId].activePeriod + votingPeriodLength + gracePeriodLength), "proposal must be in grace period");
             require(proposals[proposalId].votesByMemberByMilestone[proposals[proposalId].milestoneIndex][memberAddress] != Vote(0), "member didn't vote on a proposal");
@@ -649,12 +568,11 @@ contract Boii is ReentrancyGuard{
         }
         // burn shares
         member.shares = member.shares - sharesToBurn;
+        totalMemberShares[memberAddress] -= sharesToBurn;
         totalShares = totalShares - sharesToBurn;
 
         uint256 amountToRagequit = fairShare(userTokenBalances[GUILD][depositToken], sharesToBurn, initialTotalShares);
-        if (amountToRagequit > 0) { // gas optimization to allow a higher maximum token limit
-            // deliberately not using safemath here to keep overflows from preventing the function execution (which would break ragekicks)
-            // if a token overflows, it is because the supply was artificially inflated to oblivion, so we probably don't care about it anyways
+        if (amountToRagequit > 0) {
             userTokenBalances[GUILD][depositToken] -= amountToRagequit;
             userTokenBalances[memberAddress][depositToken] += amountToRagequit;
         }
@@ -667,6 +585,7 @@ contract Boii is ReentrancyGuard{
         require(msg.sender == proposal.proposer, "solely the proposer can cancel");
 
         proposal.flags[3] = true; // cancelled
+        totalMemberShares[proposal.applicant] -= proposal.sharesRequested;
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
     }
@@ -718,8 +637,5 @@ contract Boii is ReentrancyGuard{
         unsafeSubtractFromBalance(from, amount);
         unsafeAddToBalance(to, amount);
     }
-
-    // function externalDeposit() public payable {
-    // }
 
 }
