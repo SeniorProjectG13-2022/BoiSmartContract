@@ -304,56 +304,6 @@ contract Boii is ReentrancyGuard{
         return getCurrentPeriod() >= startingPeriod + votingPeriodLength;
     }
 
-    function testAddJailedMember(address jailedOne) public {
-        members[jailedOne] = Member(1, true, true);
-        totalShares += 1;
-    }
-
-    function testAddMember(address member) public {
-        members[member] = Member(1, true, false);
-        totalShares += 1;
-    }
-
-    function testAddNoSharesMember(address noSharesMember) public {
-        members[noSharesMember] = Member(0, true, false);
-    }
-
-    function testSetSponsorFlag(uint256 proposalId) public {
-        Proposal storage proposal = proposals[proposalId];
-        proposal.flags[0] = true;
-    }
-
-    function testCancelFlag(uint256 proposalId) public {
-        Proposal storage proposal = proposals[proposalId];
-        proposal.flags[3] = true;
-    }
-
-    function testProcessFlag(uint256 proposalId) public {
-        Proposal storage proposal = proposals[proposalId];
-        proposal.flags[1] = true;
-    }
-
-    function testPreProcessFlag(uint256 proposalId) public {
-        Proposal storage proposal = proposals[proposalId];
-        proposal.flags[5] = true;
-    }
-
-    function testSetMoreYesVote(uint256 proposalId) public {
-        Proposal storage proposal = proposals[proposalId];
-        proposal.yesVoted = 100;
-        proposal.noVoted = 0;
-    }
-
-    function testExceedDilutionBound(uint256 proposalId) public {
-        Proposal storage proposal = proposals[proposalId];
-        proposal.maxTotalSharesAtYesVote = 100000000000000;
-    }
-
-    function testDeposit(uint256 amount) public {
-        require(IERC20(depositToken).transferFrom(msg.sender, address(this), amount), "test deposit token transfer failed");
-        unsafeAddToBalance(msg.sender, amount);
-    }
-
     function preProcessProposal(uint256 proposalId) public nonReentrant {
         _validatePreProposalForProcessing(proposalId);
         bool didPass = _didPass(proposalId);
@@ -589,11 +539,6 @@ contract Boii is ReentrancyGuard{
         emit UpdateProposal(proposalId, proposal.proposer, proposal.projectHash, proposal.paymentRequested, proposal.flags, proposal.yesVoted, proposal.noVoted, proposal.milestoneIndex);
         unsafeInternalTransfer(ESCROW, proposal.proposer, proposal.tributeOffered);
     }
-
-    // function getMemberProposalVote(address memberAddress, uint256 proposalId) public view returns (Vote) {
-    //     require(members[memberAddress].exists, "member does not exist");
-    //     return proposals[proposalId].votesByMember[memberAddress];
-    // }
 
     function getMemberProposalVoteByMilestone(address memberAddress, uint256 proposalId, uint256 milestone) public view returns (Vote) {
         require(members[memberAddress].exists, "member doesn not exist");

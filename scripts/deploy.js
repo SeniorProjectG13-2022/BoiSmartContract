@@ -16,12 +16,12 @@ async function main() {
 //   temp constructor parameter
 const params = {
     summoner: "0x47a546d3352Fa4596C95B7CFE66fa8383c0A1ffF",
-    depositToken: "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",// Wrapped Ethereum (wETH) token address in GOERLI
-    periodDuration: 60,
-    votingPeriodLength: 5,
-    gracePeriodLength: 5,
-    proposalDeposit: 1000,
-    dilutionBound: 2,
+    depositToken: "0xE4d93EFe8efb13a6b27E87d7FFA4609889290c82",// Wrapped Ethereum (wETH) token address in GOERLI
+    periodDuration: 3600,
+    votingPeriodLength: 24,
+    gracePeriodLength: 24,
+    proposalDeposit: 1000000000000000,
+    dilutionBound: 3,
 }
 
 console.log("START");
